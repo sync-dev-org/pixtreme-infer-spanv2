@@ -29,7 +29,7 @@ Install from PyPI:
 python -m pip install pixtreme-infer-spanv2
 ```
 
-The package depends on `pixtreme-infer>=0.16.0`, `tensoracle>=1.4.0` and
+The package depends on `pixtreme-infer>=0.17.0`, `tensoracle>=1.6.0,<2` and
 `tensorrt-cu13>=11,<12`. Use CuPy matching the application's CUDA environment,
 such as `cupy-cuda13x` for CUDA 13.
 
