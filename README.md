@@ -7,8 +7,8 @@ Network V2) architecture module for `pixtreme.infer`. It reads SPANv2
 safetensors weights and derives the scale (x1, x2 or x4), feature channels and
 block count from the file. The import package is `pixtreme.infer.spanv2`.
 
-The module builds TensorRT networks directly and uses tensoracle to build,
-cache and open engines. It supports ordinary inference and CUDA Graph replay.
+The module builds TensorRT networks in C++ and uses tensoracle v2 to build,
+cache and open engines through its native `Model` class and the core lifecycle. It supports ordinary inference and CUDA Graph replay.
 Weights and engines are not distributed with the package.
 
 ## Supported environment
@@ -29,7 +29,7 @@ Install from PyPI:
 python -m pip install pixtreme-infer-spanv2
 ```
 
-The package depends on `pixtreme-infer>=0.17.0`, `tensoracle>=1.6.0,<2` and
+The package depends on `pixtreme>=2.6.0`, `pixtreme-infer>=0.20.0`, `tensoracle>=2.1.1` and
 `tensorrt-cu13>=11,<12`. Use CuPy matching the application's CUDA environment,
 such as `cupy-cuda13x` for CUDA 13.
 
@@ -40,7 +40,7 @@ and install the wheel:
 
 ```sh
 sha256sum -c SHA256SUMS
-python -m pip install /path/to/pixtreme_infer_spanv2-X.Y.Z-py3-none-manylinux_2_28_x86_64.whl
+python -m pip install /path/to/pixtreme_infer_spanv2-*.whl
 ```
 
 ## Weights
@@ -67,89 +67,84 @@ safetensors format. The inference runtime does not require PyTorch.
 
 ## Public API
 
-`pixtreme.infer.spanv2` exports `FAMILY_CONTRACT` and `FACTORY`.
-`FACTORY.family_contract` returns `FAMILY_CONTRACT`, which declares RGB
-float32 input and output Frames, sRGB colorspace and gamma, no color matrix
-and no call parameters.
+`pixtreme.infer.spanv2` exports one class:
 
-`FACTORY.query_contract(path, precision=..., input_hw=...)` accepts a string
-or path-like safetensors file path directly. It validates settings and the
-file's header, including tensor declarations, without reading tensor values,
-importing TensorRT or tensoracle, or allocating GPU memory. The parent
-pixtreme namespace imports CuPy during initialization. The returned
-`StatelessOpenContract` preserves the supplied artifact identity, precision
-and exact `input_hw=(height, width)`, and reports the file's scale through
-`contract.scale`. Both dimensions must be positive integers.
+```python
+Model(weights, *, precision="fp16", input_hw=(height, width), use_cuda_graph=False)
+```
 
-Precision must be `"fp32"` or `"fp16"`. FP32 uses standard TensorRT layers
-and serves as the comparison reference. FP16 uses the packaged cubin plugin
-for the fused tail. Both precisions take and return float32 Frames.
+Pass a string or path-like safetensors path directly. The constructor validates
+settings, metadata and exact tensor declarations and publishes `model.contract`
+without initializing CUDA or allocating GPU memory. It derives the scale from the
+file. `contract.precision`, `contract.input_hw`, `contract.scale` and
+`contract.use_cuda_graph` describe the fixed configuration. `model.family_contract`
+declares exact RGB float32 input and output Frames, sRGB colorspace and gamma,
+no color matrix and no auxiliary parameters. Contract values are immutable copies
+of the native declaration.
 
-`FACTORY.open(path, precision=..., input_hw=...)` repeats the query's checks,
-then opens or builds tensoracle's cached engine and returns a reusable Frame
-runner. Its `contract` equals the query result for the same settings.
+Both input dimensions must be positive integers. Precision must be `"fp32"` or
+`"fp16"`. FP32 uses standard TensorRT layers and serves as the comparison reference.
+FP16 uses the packaged cubin plugin for the fused tail. Both precisions accept and
+return float32 Frames.
 
-The input must be a `pixtreme.core.Frame` whose data is a C-contiguous CUDA
-array of shape `(height, width, 3)` and dtype `float32`, with
-`channels=("R", "G", "B")`, `colorspace="sRGB"`, `gamma="sRGB"` and
-`matrix=None`. Pixels use RGB values in the 0–1 convention declared by
-`spanv2.io`. The module performs no range or color conversion, subtracts no
-mean and does not clip the output. The output is a Frame with the same dtype
-and color metadata, of shape `(height * scale, width * scale, 3)`.
+`model.prepare(device=0, stream=0)` repeats artifact validation and acquires the
+engine, execution and GPU storage. The prepared contract equals the constructor's
+contract. A changed contract or failed preparation requires a new instance.
+Entering `with model:` prepares a new ordinary instance with the default device
+and stream; an explicitly prepared instance keeps its selected stream.
+`model.close()` releases resources and is idempotent. Inference before preparation,
+after failed preparation or after close raises `RuntimeError` before backend work.
+
+The input must be a `pixtreme.core.Frame` with contiguous CUDA pixels of shape
+`(height, width, 3)`, dtype `float32`, `channels=("R", "G", "B")`,
+`colorspace="sRGB"`, `gamma="sRGB"` and `matrix=None`. Pixels use the RGB 0–1
+convention declared by `spanv2.io`. The module performs no range or color
+conversion, subtracts no mean and does not clip output values. The output has
+the same dtype and color metadata and shape `(height * scale, width * scale, 3)`.
 
 ```python
 import cupy as cp
-from pixtreme.core import Frame
-from pixtreme.infer.spanv2 import FACTORY
+import pixtreme as px
+from pixtreme.infer.spanv2 import Model
 
-weights = "/path/to/model.safetensors"
 input_hw = (540, 960)
-contract = FACTORY.query_contract(weights, precision="fp16", input_hw=input_hw)
+model = Model("/path/to/model.safetensors", precision="fp16", input_hw=input_hw)
+contract = model.contract  # CPU-only inspection
+stream = px.core.Stream(device=0, non_blocking=True)
+model.prepare(device=0, stream=stream.ptr)
 
-# Replace this black image with your contiguous RGB float32 CUDA pixels.
-input_frame = Frame(
-    data=cp.zeros((*input_hw, 3), dtype=cp.float32),
-    channels=("R", "G", "B"),
-    colorspace="sRGB",
-    gamma="sRGB",
-    matrix=None,
-)
-with FACTORY.open(weights, precision="fp16", input_hw=input_hw) as runner:
-    assert runner.contract == contract
-    output_frame = runner(input_frame)
-    cp.cuda.get_current_stream().synchronize()
+with cp.cuda.ExternalStream(stream.ptr), model:
+    # Replace this black image with your contiguous RGB float32 CUDA pixels.
+    pixels = cp.zeros((*input_hw, 3), dtype=cp.float32)
+    input_frame = px.core.Frame(
+        data=pixels, channels=("R", "G", "B"), colorspace="sRGB",
+        gamma="sRGB", matrix=None, stream=stream.ptr,
+    )
+    output_frame = model(input_frame, stream=stream.ptr)
+    stream.synchronize()
+    output_pixels = cp.from_dlpack(output_frame)
 ```
 
-Reuse the runner for sequential requests on the opening CUDA device and one
-stream. Ordinary inference consumes the input through DLPack without a host
-memory round trip and allocates output storage for each call. Keep input
-pixels alive until the stream has completed their use. Complete pending CUDA
-work before leaving the `with` block or calling `close()`; closing releases
-the execution context and later requests fail.
+Reuse one instance for sequential requests on its prepared device and stream.
+Ordinary execution passes the native Frame's input address directly to TensorRT
+and allocates an independent output Frame. All pixel work stays on the GPU.
+Borrowed input allocations must remain alive until their queued uses finish.
+Complete pending stream work before closing the model.
 
-For CUDA Graph inference, select `FACTORY.graph_factory()`. The returned
-factory accepts the same path, precision and input size. Selection and
-`query_contract` allocate no GPU resources. Open inside an explicit
-non-default CuPy stream and use that stream for every request. Continuing
-from the synchronized example above:
+For CUDA Graph inference, set `use_cuda_graph=True` in the same constructor.
+Prepare the model with an explicit non-default stream and pass that stream's
+numeric handle to every call. Core warms up and captures the module's single
+route during preparation without consuming requests. Each call copies the current
+input into fixed GPU storage, replays the graph and copies its result into an
+independent output Frame. Later requests and model cleanup do not change earlier
+outputs. A different configuration, device or stream requires a new instance.
 
-```python
-graph_factory = FACTORY.graph_factory()
-stream = cp.cuda.Stream(non_blocking=True)
-with stream:
-    with graph_factory.open(weights, precision="fp16", input_hw=input_hw) as runner:
-        output_frame = runner(input_frame)
-        stream.synchronize()
-```
-
-Opening prepares fixed input and output storage and captures the execution
-using core's `CudaGraphBuffers` and `CudaGraphSession`. Each request copies
-the current input into that storage, replays the graph and returns a separate
-output allocation carrying the request's color metadata. Inputs must be ready
-on the opening stream and remain alive until their copies finish. Returned
-Frames retain their pixels across later requests and after close. A different
-input size, CUDA device or stream requires a separate instance. Complete
-pending work before closing the graph runner.
+Output pixels are allocated on the inference stream. Keep an external stream
+(such as a CuPy stream) alive through the last reference to each output Frame,
+shallow clone and exported DLPack view. A stream created by `px.core.Stream`, as
+above, is retained by pixtreme's native output allocations. To read on another
+stream, use the Frame's `wait` and `record_stream` methods or the DLPack stream
+handoff.
 
 ## License
 
