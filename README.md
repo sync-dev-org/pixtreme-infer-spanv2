@@ -29,7 +29,7 @@ Install from PyPI:
 python -m pip install pixtreme-infer-spanv2
 ```
 
-The package depends on `pixtreme>=2.6.0`, `pixtreme-infer>=0.20.1`, `tensoracle>=2.1.1` and
+The package depends on `pixtreme>=2.6.0`, `pixtreme-infer>=0.21.0`, `tensoracle>=2.1.1` and
 `tensorrt-cu13>=11,<12`. Use CuPy matching the application's CUDA environment,
 such as `cupy-cuda13x` for CUDA 13.
 
@@ -145,6 +145,85 @@ shallow clone and exported DLPack view. A stream created by `px.core.Stream`, as
 above, is retained by pixtreme's native output allocations. To read on another
 stream, use the Frame's `wait` and `record_stream` methods or the DLPack stream
 handoff.
+
+## C and C++
+
+The wheel includes `include/pixtreme/infer/spanv2.h`, the header-only C++ wrapper
+`include/pixtreme/infer/spanv2.hpp`, `lib/libpixtreme_infer_spanv2.so.1` and a
+CMake package under `pixtreme/infer/spanv2/`. C and C++ programs use the same
+native implementation and packaged plugin as Python, without loading a Python
+interpreter. The module C ABI is 1.0, independent of the core ABI and the
+distribution version. Its ABI check accepts the same major and a header minor
+no newer than the library minor.
+Native consumers use core's C ABI 3 (`libpixtreme_infer.so.3`, core 0.21.0 or newer).
+
+Set `CMAKE_PREFIX_PATH` to the installed module directory, for example
+`/path/to/site-packages/pixtreme/infer/spanv2`, and link the exported target:
+
+```cmake
+cmake_minimum_required(VERSION 3.26)
+project(spanv2_example LANGUAGES C CXX)
+find_package(pixtreme_infer_spanv2 1 CONFIG REQUIRED)
+add_executable(example example.cpp)
+target_link_libraries(example PRIVATE pixtreme_infer_spanv2::pixtreme_infer_spanv2)
+```
+
+The CMake package finds the companion core package in the same installation.
+Both headers use core's status, error ownership and model lifecycle. A C program
+creates a core model handle with the module's options:
+
+```c
+#include <pixtreme/infer/spanv2.h>
+#include <stdio.h>
+
+int main(int argc, char **argv) {
+    if (argc != 2) return 1;
+    pixtreme_infer_spanv2_model_options_t options = PIXTREME_INFER_SPANV2_MODEL_OPTIONS_INIT;
+    options.weights = argv[1];
+    options.precision = "fp16";
+    options.input_height = 540;
+    options.input_width = 960;
+    pixtreme_infer_model_t *model = NULL;
+    pixtreme_infer_error_t *error = NULL;
+    pixtreme_infer_status_t status = pixtreme_infer_spanv2_model_create(&options, &model, &error);
+    if (status != PIXTREME_INFER_SUCCESS) {
+        fprintf(stderr, "%s\n", pixtreme_infer_error_message(error));
+        pixtreme_infer_error_destroy(error);
+        return 1;
+    }
+    /* CPU-only construction has validated the weights and fixed contract.
+       Use pixtreme_infer_model_prepare / run with pixtreme CUDA Frame handles. */
+    status = pixtreme_infer_model_close(model, &error);
+    pixtreme_infer_model_destroy(model);
+    pixtreme_infer_error_destroy(error);
+    return status == PIXTREME_INFER_SUCCESS ? 0 : 1;
+}
+```
+
+`use_cuda_graph` accepts zero or one; its default is zero. The options descriptor
+starts with `struct_size`, and an omitted graph field uses that default.
+Construction validates settings and weights before creating a CUDA context or
+an engine. Subsequent preparation, inference, close and destruction use
+`pixtreme_infer_model_*` from `pixtreme/infer/core.h`.
+
+The C++ wrapper owns the handle, inherits core's operations and throws
+`pixtreme::infer::Error` on failure:
+
+```cpp
+#include <pixtreme/infer/spanv2.hpp>
+
+int main(int argc, char **argv) {
+    if (argc != 2) return 1;
+    pixtreme::infer::spanv2::Model model(argv[1], "fp16", 540, 960);
+    auto contract = model.contract();
+    model.close();
+    return contract.input_height == 540 ? 0 : 1;
+}
+```
+
+Keep the module library loaded until every model handle has been destroyed.
+Complete submitted GPU work before closing or destroying a model, as required
+by the core lifecycle.
 
 ## License
 
