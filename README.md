@@ -29,7 +29,7 @@ Install from PyPI:
 python -m pip install pixtreme-infer-spanv2
 ```
 
-The package depends on `pixtreme>=2.6.0`, `pixtreme-infer>=0.21.0`, `tensoracle>=2.1.1` and
+The package depends on `pixtreme>=2.14.0`, `pixtreme-infer>=0.21.2`, `tensoracle>=2.1.2` and
 `tensorrt-cu13>=11,<12`. Use CuPy matching the application's CUDA environment,
 such as `cupy-cuda13x` for CUDA 13.
 
@@ -113,7 +113,7 @@ contract = model.contract  # CPU-only inspection
 stream = px.core.Stream(device=0, non_blocking=True)
 model.prepare(device=0, stream=stream.ptr)
 
-with cp.cuda.ExternalStream(stream.ptr), model:
+with cp.cuda.Stream.from_external(stream), model:
     # Replace this black image with your contiguous RGB float32 CUDA pixels.
     pixels = cp.zeros((*input_hw, 3), dtype=cp.float32)
     input_frame = px.core.Frame(
@@ -141,7 +141,8 @@ outputs. A different configuration, device or stream requires a new instance.
 
 Output pixels are allocated on the inference stream. Keep an external stream
 (such as a CuPy stream) alive through the last reference to each output Frame,
-shallow clone and exported DLPack view. A stream created by `px.core.Stream`, as
+shared Frame view created with `view()` and exported DLPack view. `clone()` always
+copies pixels into an independent allocation. A stream created by `px.core.Stream`, as
 above, is retained by pixtreme's native output allocations. To read on another
 stream, use the Frame's `wait` and `record_stream` methods or the DLPack stream
 handoff.
@@ -155,7 +156,7 @@ native implementation and packaged plugin as Python, without loading a Python
 interpreter. The module C ABI is 1.0, independent of the core ABI and the
 distribution version. Its ABI check accepts the same major and a header minor
 no newer than the library minor.
-Native consumers use core's C ABI 3 (`libpixtreme_infer.so.3`, core 0.21.0 or newer).
+Native consumers use core's C ABI 3 (`libpixtreme_infer.so.3`, core 0.21.2 or newer).
 
 Set `CMAKE_PREFIX_PATH` to the installed module directory, for example
 `/path/to/site-packages/pixtreme/infer/spanv2`, and link the exported target:
@@ -233,3 +234,12 @@ text is included in the source repository's `LICENSE` file and the wheel's
 license texts and notices in its `.dist-info/licenses/` directory. The notice
 for portions derived from the original SPANv2 code is included as
 `licenses/SPANV2-LICENSE.txt` within that directory.
+
+## Source builds
+
+For source builds, the native CMake project resolves CUDA 13.2 headers, CRT
+and the driver stub through Conan 2, using the repository's recipe, profiles
+and lock. The Conan CLI version is pinned in `python/pyproject.toml`'s build
+requirements. TensorRT's SDK is supplied through `SPANV2_TENSORRT_ROOT`.
+See [the native build guide](python/tools/spanv2_cubin_plugin/README.md) for
+development checks, dependency preparation and wheel/sdist builds.
