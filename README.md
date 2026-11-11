@@ -29,7 +29,7 @@ Install from PyPI:
 python -m pip install pixtreme-infer-spanv2
 ```
 
-The package depends on `pixtreme>=2.14.0`, `pixtreme-infer>=0.21.2`, `tensoracle>=2.1.2` and
+The package depends on `pixtreme>=2.14.0`, `pixtreme-infer>=0.22.0`, `tensoracle>=2.1.2` and
 `tensorrt-cu13>=11,<12`. Use CuPy matching the application's CUDA environment,
 such as `cupy-cuda13x` for CUDA 13.
 
@@ -156,7 +156,29 @@ native implementation and packaged plugin as Python, without loading a Python
 interpreter. The module C ABI is 1.0, independent of the core ABI and the
 distribution version. Its ABI check accepts the same major and a header minor
 no newer than the library minor.
-Native consumers use core's C ABI 3 (`libpixtreme_infer.so.3`, core 0.21.2 or newer).
+Native consumers use core's C ABI 3.1 (`libpixtreme_infer.so.3`, core 0.22.0 or newer).
+
+Core's name factory also creates this module without linking its library
+directly. The wheel installs `lib/libpixtreme_infer_spanv2_entry.so` beside
+the model library. C callers use `pixtreme_infer_model_create_by_name` with
+the name `"spanv2"`; C++ callers can use:
+
+```cpp
+#include <pixtreme/infer/core.hpp>
+
+auto model = pixtreme::infer::Model::create_by_name("spanv2", {
+    {"weights", "/path/to/model.safetensors"}, {"precision", "fp16"},
+    {"input_height", "540"}, {"input_width", "960"},
+    {"use_cuda_graph", "false"},
+});
+```
+
+`weights`, `precision`, `input_height` and `input_width` are required.
+Only `use_cuda_graph` is optional; it accepts `"true"` or `"false"` and
+defaults to `"false"`. Dimensions are positive native integers and precision
+is `"fp32"` or `"fp16"`. Unknown, duplicate, missing and invalid settings
+are rejected by key name without including submitted values in diagnostics.
+The resulting handle uses the same core lifecycle as the existing factory.
 
 Set `CMAKE_PREFIX_PATH` to the installed module directory, for example
 `/path/to/site-packages/pixtreme/infer/spanv2`, and link the exported target:
