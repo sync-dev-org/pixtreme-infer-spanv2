@@ -29,7 +29,7 @@ Install from PyPI:
 python -m pip install pixtreme-infer-spanv2
 ```
 
-The package depends on `pixtreme>=2.14.0`, `pixtreme-infer>=0.22.0`, `tensoracle>=2.1.2` and
+The package depends on `pixtreme>=2.17.0`, `pixtreme-infer>=0.23.0`, `tensoracle>=2.1.2` and
 `tensorrt-cu13>=11,<12`. Use CuPy matching the application's CUDA environment,
 such as `cupy-cuda13x` for CUDA 13.
 
@@ -156,7 +156,7 @@ native implementation and packaged plugin as Python, without loading a Python
 interpreter. The module C ABI is 1.0, independent of the core ABI and the
 distribution version. Its ABI check accepts the same major and a header minor
 no newer than the library minor.
-Native consumers use core's C ABI 3.1 (`libpixtreme_infer.so.3`, core 0.22.0 or newer).
+Native consumers use core's C ABI 3.1 (`libpixtreme_infer.so.3`, core 0.23.0 or newer).
 
 Core's name factory also creates this module without linking its library
 directly. The wheel installs `lib/libpixtreme_infer_spanv2_entry.so` beside
