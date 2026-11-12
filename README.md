@@ -16,7 +16,7 @@ Weights and engines are not distributed with the package.
 - Linux x86_64 with glibc 2.28 or newer
 - Python 3.12 or newer
 - NVIDIA GPU: sm86, sm89 or sm120
-- CUDA 13 with a compatible NVIDIA driver, TensorRT 11 and CuPy for CUDA 13
+- CUDA 13 with a compatible NVIDIA driver, TensorRT 11.2 or newer and CuPy for CUDA 13
 
 Release wheels contain the native SPANv2 plugin and cubins for all three GPU
 targets. Installation needs no C++ compiler or CUDA/TensorRT SDK setup.
@@ -29,8 +29,8 @@ Install from PyPI:
 python -m pip install pixtreme-infer-spanv2
 ```
 
-The package depends on `pixtreme>=2.17.0`, `pixtreme-infer>=0.23.0`, `tensoracle>=2.1.2` and
-`tensorrt-cu13>=11,<12`. Use CuPy matching the application's CUDA environment,
+The package depends on `pixtreme>=2.17.1`, `pixtreme-infer>=0.23.0`, `tensoracle>=2.2.1` and
+`tensorrt-cu13>=11.2,<12`. Use CuPy matching the application's CUDA environment,
 such as `cupy-cuda13x` for CUDA 13.
 
 Wheels and `SHA256SUMS` are also available from the
@@ -262,6 +262,7 @@ for portions derived from the original SPANv2 code is included as
 For source builds, the native CMake project resolves CUDA 13.2 headers, CRT
 and the driver stub through Conan 2, using the repository's recipe, profiles
 and lock. The Conan CLI version is pinned in `python/pyproject.toml`'s build
-requirements. TensorRT's SDK is supplied through `SPANV2_TENSORRT_ROOT`.
+requirements. Conan obtains TensorRT's headers and link library from the shared
+`tensorrt/11.2.1.2` recipe; the lock fixes its revision.
 See [the native build guide](python/tools/spanv2_cubin_plugin/README.md) for
 development checks, dependency preparation and wheel/sdist builds.
