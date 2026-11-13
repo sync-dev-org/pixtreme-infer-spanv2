@@ -18,8 +18,8 @@ Weights and engines are not distributed with the package.
 - NVIDIA GPU: sm86, sm89 or sm120
 - CUDA 13 with a compatible NVIDIA driver, TensorRT 11.2 or newer and CuPy for CUDA 13
 
-Release wheels contain the native SPANv2 plugin and cubins for all three GPU
-targets. Installation needs no C++ compiler or CUDA/TensorRT SDK setup.
+Release wheels embed the native SPANv2 plugin and cubins for all three GPU
+targets in the model library. Installation needs no C++ compiler or CUDA/TensorRT SDK setup.
 
 ## Installation
 
@@ -47,7 +47,7 @@ For a pip installation, use tensoracle's TensorRT extra:
 python -m pip install 'tensoracle[tensorrt]>=2.4'
 ```
 
-The extra is planned for tensoracle 2.4.0; earlier tensoracle wheels install pip's
+The extra is available in tensoracle 2.4.0 and newer; earlier tensoracle wheels install pip's
 TensorRT as a required dependency. This package declares no TensorRT runtime
 dependency or extra. Use CuPy matching the application's CUDA environment,
 such as `cupy-cuda13x` for CUDA 13.
@@ -103,7 +103,7 @@ of the native declaration.
 
 Both input dimensions must be positive integers. Precision must be `"fp32"` or
 `"fp16"`. FP32 uses standard TensorRT layers and serves as the comparison reference.
-FP16 uses the packaged cubin plugin for the fused tail. Both precisions accept and
+FP16 uses the embedded cubin plugin for the fused tail. Both precisions accept and
 return float32 Frames.
 
 `model.prepare(device=0, stream=0)` repeats artifact validation and acquires the
@@ -171,7 +171,7 @@ handoff.
 The wheel includes `include/pixtreme/infer/spanv2.h`, the header-only C++ wrapper
 `include/pixtreme/infer/spanv2.hpp`, `lib/libpixtreme_infer_spanv2.so.1` and a
 CMake package under `pixtreme/infer/spanv2/`. C and C++ programs use the same
-native implementation and packaged plugin as Python, without loading a Python
+native implementation and embedded plugin as Python, without loading a Python
 interpreter. The module C ABI is 1.0, independent of the core ABI and the
 distribution version. Its ABI check accepts the same major and a header minor
 no newer than the library minor.
@@ -336,5 +336,6 @@ and CUDA driver dependencies to the final link. It also propagates
 Static builds supply the builtin entry `pixtreme_infer_module_entry_spanv2`
 and omit the shared entry library. A process must use one copy of the SPANv2
 module. Wheels and prebuilt module archives contain shared libraries only.
-See [static native builds](cpp/README.md#static-source-builds) for commands and
-the plugin preparation limitation.
+Both forms embed the plugin and bundle and support FP32 and FP16 inference
+without a separate plugin library, manifest or cubin directory.
+See [static native builds](cpp/README.md#static-source-builds) for commands.
