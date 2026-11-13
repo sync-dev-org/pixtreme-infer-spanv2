@@ -29,8 +29,27 @@ Install from PyPI:
 python -m pip install pixtreme-infer-spanv2
 ```
 
-The package depends on `pixtreme>=2.17.1`, `pixtreme-infer>=0.23.0`, `tensoracle>=2.2.1` and
-`tensorrt-cu13>=11.2,<12`. Use CuPy matching the application's CUDA environment,
+The package depends on `pixtreme>=2.17.1`, `pixtreme-infer>=0.24.0` and `tensoracle>=2.2.1`.
+Install TensorRT 11.2 or newer (major version 11) from
+[NVIDIA's apt repository](https://docs.nvidia.com/deeplearning/tensorrt/latest/installing-tensorrt/install-debian.html)
+on the host:
+
+```sh
+sudo apt-get install libnvinfer11
+```
+
+Package initialization loads the host's `libnvinfer.so.11` before native code,
+using the loader's normal search. If the host runtime is unavailable, it uses
+an installed pip TensorRT runtime (`tensorrt_libs`) instead. Only one runtime is loaded.
+For a pip installation, use tensoracle's TensorRT extra:
+
+```sh
+python -m pip install 'tensoracle[tensorrt]>=2.4'
+```
+
+The extra is planned for tensoracle 2.4.0; earlier tensoracle wheels install pip's
+TensorRT as a required dependency. This package declares no TensorRT runtime
+dependency or extra. Use CuPy matching the application's CUDA environment,
 such as `cupy-cuda13x` for CUDA 13.
 
 Wheels and `SHA256SUMS` are also available from the
@@ -156,7 +175,7 @@ native implementation and packaged plugin as Python, without loading a Python
 interpreter. The module C ABI is 1.0, independent of the core ABI and the
 distribution version. Its ABI check accepts the same major and a header minor
 no newer than the library minor.
-Native consumers use core's C ABI 3.1 (`libpixtreme_infer.so.3`, core 0.23.0 or newer).
+Native consumers use core's C ABI 3.2 (`libpixtreme_infer.so.3`, core 0.24.0 or newer).
 
 Core's name factory also creates this module without linking its library
 directly. The wheel installs `lib/libpixtreme_infer_spanv2_entry.so` beside
@@ -179,6 +198,46 @@ defaults to `"false"`. Dimensions are positive native integers and precision
 is `"fp32"` or `"fp16"`. Unknown, duplicate, missing and invalid settings
 are rejected by key name without including submitted values in diagnostics.
 The resulting handle uses the same core lifecycle as the existing factory.
+
+Applications that link the module library can select its builtin entry before
+any named creation or query. Call `pixtreme_infer_module_entries_set` once per
+process with the complete list of linked module entries. C++ callers can use
+`pixtreme::infer::set_module_entries({pixtreme_infer_module_entry_spanv2()})`.
+The entry descriptor has static storage and the name `spanv2`; both entry routes
+return the same descriptor.
+
+Core's `pixtreme_infer_family_query_by_name` queries the module without creating
+a model, reading weights or initializing CUDA. Every creation setting is optional
+for SPANv2 queries, because its family is constant: RGB channels, float32, sRGB
+colorspace and sRGB gamma, without a color matrix. Supplied settings still reject
+unknown and duplicate keys and invalid values by key name. The returned family
+is independently owned and must be destroyed with `pixtreme_infer_family_destroy`.
+For example, this C program selects the linked module and queries with no settings:
+
+```c
+#include <pixtreme/infer/spanv2.h>
+#include <stdio.h>
+
+int main(void) {
+    const pixtreme_infer_module_entry_t *entries[] = {pixtreme_infer_module_entry_spanv2()};
+    pixtreme_infer_error_t *error = NULL;
+    pixtreme_infer_family_t *family = NULL;
+    pixtreme_infer_status_t status = pixtreme_infer_module_entries_set(entries, 1, &error);
+    if (status == PIXTREME_INFER_SUCCESS)
+        status = pixtreme_infer_family_query_by_name("spanv2", NULL, 0, &family, &error);
+    if (status != PIXTREME_INFER_SUCCESS)
+        fprintf(stderr, "%s\n", pixtreme_infer_error_message(error));
+    /* pixtreme_infer_family_get_desc borrows the declaration until destruction. */
+    pixtreme_infer_family_destroy(family);
+    pixtreme_infer_error_destroy(error);
+    return status == PIXTREME_INFER_SUCCESS ? 0 : 1;
+}
+```
+
+Omit entry-list setup to use the installed shared entry library. C++ callers
+query with `pixtreme::infer::Family::query_by_name("spanv2", {})`; the returned
+wrapper owns the family. A successful query does not promise that model creation
+or preparation with the same settings will succeed.
 
 Set `CMAKE_PREFIX_PATH` to the installed module directory, for example
 `/path/to/site-packages/pixtreme/infer/spanv2`, and link the exported target:
@@ -266,3 +325,16 @@ requirements. Conan obtains TensorRT's headers and link library from the shared
 `tensorrt/11.2.1.2` recipe; the lock fixes its revision.
 See [the native build guide](python/tools/spanv2_cubin_plugin/README.md) for
 development checks, dependency preparation and wheel/sdist builds.
+
+The public native library defaults to a shared library. Configure `cpp/` with
+`-DBUILD_SHARED_LIBS=OFF` to build `libpixtreme_infer_spanv2.a` from source.
+Both forms install the CMake target
+`pixtreme_infer_spanv2::pixtreme_infer_spanv2`. The static archive contains only
+SPANv2's objects; its CMake package passes core, pixtreme, tensoracle, TensorRT
+and CUDA driver dependencies to the final link. It also propagates
+`PIXTREME_INFER_SPANV2_STATIC` for the public header's declarations.
+Static builds supply the builtin entry `pixtreme_infer_module_entry_spanv2`
+and omit the shared entry library. A process must use one copy of the SPANv2
+module. Wheels and prebuilt module archives contain shared libraries only.
+See [static native builds](cpp/README.md#static-source-builds) for commands and
+the plugin preparation limitation.
