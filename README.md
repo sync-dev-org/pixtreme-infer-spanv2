@@ -29,7 +29,7 @@ Install from PyPI:
 python -m pip install pixtreme-infer-spanv2
 ```
 
-The package depends on `pixtreme>=2.17.1`, `pixtreme-infer>=0.24.0` and `tensoracle>=2.2.1`.
+The package depends on `pixtreme>=2.22.0`, `pixtreme-infer>=0.25.3` and `tensoracle>=2.5.1`.
 Install TensorRT 11.2 or newer (major version 11) from
 [NVIDIA's apt repository](https://docs.nvidia.com/deeplearning/tensorrt/latest/installing-tensorrt/install-debian.html)
 on the host:
@@ -175,7 +175,7 @@ native implementation and embedded plugin as Python, without loading a Python
 interpreter. The module C ABI is 1.0, independent of the core ABI and the
 distribution version. Its ABI check accepts the same major and a header minor
 no newer than the library minor.
-Native consumers use core's C ABI 3.2 (`libpixtreme_infer.so.3`, core 0.24.0 or newer).
+Native consumers use core's C ABI 3.2 (`libpixtreme_infer.so.3`, core 0.25.3 or newer).
 
 Core's name factory also creates this module without linking its library
 directly. The wheel installs `lib/libpixtreme_infer_spanv2_entry.so` beside
