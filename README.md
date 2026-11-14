@@ -29,7 +29,7 @@ Install from PyPI:
 python -m pip install pixtreme-infer-spanv2
 ```
 
-The package depends on `pixtreme>=2.22.0`, `pixtreme-infer>=0.25.3` and `tensoracle>=2.5.1`.
+The package depends on `pixtreme>=2.24.0`, `pixtreme-infer>=0.25.4` and `tensoracle>=2.5.2`.
 Install TensorRT 11.2 or newer (major version 11) from
 [NVIDIA's apt repository](https://docs.nvidia.com/deeplearning/tensorrt/latest/installing-tensorrt/install-debian.html)
 on the host:
@@ -175,7 +175,7 @@ native implementation and embedded plugin as Python, without loading a Python
 interpreter. The module C ABI is 1.0, independent of the core ABI and the
 distribution version. Its ABI check accepts the same major and a header minor
 no newer than the library minor.
-Native consumers use core's C ABI 3.2 (`libpixtreme_infer.so.3`, core 0.25.3 or newer).
+Native consumers use core's C ABI 3.2 (`libpixtreme_infer.so.3`, core 0.25.4 or newer).
 
 Core's name factory also creates this module without linking its library
 directly. The wheel installs `lib/libpixtreme_infer_spanv2_entry.so` beside
@@ -339,3 +339,14 @@ module. Wheels and prebuilt module archives contain shared libraries only.
 Both forms embed the plugin and bundle and support FP32 and FP16 inference
 without a separate plugin library, manifest or cubin directory.
 See [static native builds](cpp/README.md#static-source-builds) for commands.
+
+## Development
+
+The native and Python builds share `cpp/conan/prepare.py`, the consumer recipe
+and the lock. Conan supplies CMake and Ninja; the host needs Python, the pinned
+Conan CLI, a C++ compiler and authenticated `gh` access for recipe preparation.
+Run preparation before CMake, activate `conanbuild.sh`, then configure using
+the generated CMake preset. See [native build and test](cpp/README.md) and
+[Python development and release](python/tools/spanv2_cubin_plugin/README.md)
+for the commands. Python development uses a wheel installation for this
+namespace package.
